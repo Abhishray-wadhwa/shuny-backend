@@ -1,0 +1,13 @@
+# Ignore virtual environment
+venv/
+.venv/
+
+# Bytecode and cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+# Ignore logs and egg-info
+*.log
+*.egg-info/
