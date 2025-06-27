@@ -1,11 +1,8 @@
-import psycopg2
+from setuptools import setup, find_packages
 
-conn = psycopg2.connect(
-    host="aws-0-ap-southeast-1.pooler.supabase.com",
-    port="6543",
-    database="postgres",
-    user="postgres.yjfczkcpcdagxpdrbynf",
-    password="supercalifragilastic"
+setup(
+    name="invest_ai_engine",
+    version="0.1",
+    packages=find_packages(),
+    install_requires=[],
 )
-
-print("✅ Connected!")
