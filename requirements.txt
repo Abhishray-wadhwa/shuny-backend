@@ -11,7 +11,7 @@ async-timeout==5.0.1
 attrs==21.4.0
 backcall==0.2.0
 beautifulsoup4==4.11.1
-bleach==5.0.0
+bleach==6.1.0
 blinker==1.4
 brewer2mpl==1.4.1
 Brotli==1.0.9
