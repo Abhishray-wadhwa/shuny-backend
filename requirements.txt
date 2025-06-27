@@ -63,8 +63,6 @@ hyperopt==0.2.7
 idna==3.3
 importlib-metadata==4.11.3
 iniconfig==2.1.0
-# Editable install with no version control (invest_ai_engine==0.1)
--e C:/Users/Abhi/Desktop/Shuny/invest_ai_engine
 ipykernel==6.15.0
 ipython==8.4.0
 ipython-genutils==0.2.0
