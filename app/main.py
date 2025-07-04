@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # ✅ Import CORS middleware
-
+from app.routers import feedback
 from app.routers import recommendation
+from app.routers import beta
 from app.config import Base, engine
 from app.models.mutual_fund import MutualFund  # Needed to register model class
 
@@ -24,3 +25,5 @@ def read_root():
 
 # ✅ Register the router under a clean prefix
 app.include_router(recommendation.router, prefix="/recommendation")
+app.include_router(feedback.router, prefix="/feedback")
+app.include_router(beta.router, prefix="/beta")

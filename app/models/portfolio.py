@@ -94,7 +94,7 @@ class UserProfile(BaseModel):
     income: float = Field(..., gt=0, description="Annual income in INR")
     employment_status: EmploymentStatus
     location: LocationType
-    
+    user_id: Optional[int] = None 
     # Personal Details (optional for comprehensive profiling)
     name: Optional[str] = Field(None, description="Full name of the user")
     email: Optional[str] = Field(None, description="Email address")
@@ -377,6 +377,8 @@ class PortfolioRecommendation(BaseModel):
     suggested_sip: float
     recommended_funds: Dict[str, List[RecommendedFund]]
     notes: List[str]
+    user_id: Optional[int] = None 
+
     
     # Enhanced fields
     investment_optimization: Optional[InvestmentOptimization] = None

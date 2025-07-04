@@ -5,6 +5,7 @@ import traceback
 from fastapi import Query
 from typing import Any,Optional,Dict
 from app.services.fund_picker import pick_funds
+from app.services.user_profile_storage import save_user_data_from_raw
 from app.models.mutual_fund import MutualFund  # Assuming this is your ORM model
 from app.services.fund_suitability import FundSuitabilityEngine
 from app.config import SessionLocal
@@ -180,6 +181,15 @@ def safe_dict_conversion(obj):
 @router.post("/recommend", response_model=PortfolioRecommendation)
 def get_recommendation(profile: UserProfile, db: Session = Depends(get_db)):
     try:
+        user_id = save_user_data_from_raw(
+                    profile.dict(),
+                    user_id=profile.user_id,
+                    save_user=not profile.user_id
+                )
+        logger.info(f"User data stored under ID: {user_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to store user profile/goals to Supabase: {e}")
+    try:
         logger.info("🔍 Running AdvancedPortfolioModel for user profile...")
         
         # Step 1: Core engine logic - This returns a PortfolioRecommendation object
@@ -257,8 +267,10 @@ def get_recommendation(profile: UserProfile, db: Session = Depends(get_db)):
                 "llm_feedback": human_summary,
                 "flags": flags,
                 "story": story_summary,
-                "alerts": alerts
+                "alerts": alerts,
+                
             })
+            response_data["user_id"] = user_id
 
             # Return the updated PortfolioRecommendation
             return PortfolioRecommendation(**response_data)
