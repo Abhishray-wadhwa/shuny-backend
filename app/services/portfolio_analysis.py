@@ -633,8 +633,8 @@ class EnhancedPortfolioAnalyzer:
                     })
         
         # Tax estimates (simplified)
-        stcg_tax = sum(h["gain"] for h in stcg_holdings) * 0.15  # 15% STCG
-        ltcg_tax = max(0, (sum(h["gain"] for h in ltcg_holdings) - 100000)) * 0.10  # 10% LTCG above 1L
+        stcg_tax = sum(h["gain"] for h in stcg_holdings) * 0.20  # 15% STCG
+        ltcg_tax = max(0, (sum(h["gain"] for h in ltcg_holdings) - 100000)) * 0.125  # 10% LTCG above 1L
         
         return {
             "total_unrealized_gains": round(total_unrealized_gains, 2),

@@ -124,6 +124,9 @@ class UserProfile(BaseModel):
     goal_timeline_years: int = Field(..., ge=1, le=50, description="Investment timeline in years")
     goal_priority: GoalPriority = Field(GoalPriority.MEDIUM)
     
+    # FIXED: Add goal_name field for database constraint
+    goal_name: Optional[str] = Field(None, description="Name of the investment goal")
+    
     # Secondary Goals (for comprehensive planning)
     secondary_goals: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Additional financial goals")
     
@@ -220,6 +223,32 @@ class UserProfile(BaseModel):
             pass  # Could add specific logic for older investors
         return v
     
+    # FIXED: Add validator for goal_name to auto-generate if not provided
+    @validator('goal_name', always=True)
+    def generate_goal_name(cls, v, values):
+        """Generate goal name if not provided"""
+        if v is None:
+            investment_goal = values.get('investment_goal')
+            if investment_goal:
+                # Convert enum to readable name
+                goal_names = {
+                    InvestmentGoal.EMERGENCY_FUND: "Emergency Fund",
+                    InvestmentGoal.WEDDING: "Wedding",
+                    InvestmentGoal.HOUSE: "House Purchase",
+                    InvestmentGoal.CHILD_EDUCATION: "Child Education",
+                    InvestmentGoal.RETIREMENT: "Retirement",
+                    InvestmentGoal.WEALTH_GROWTH: "Wealth Growth",
+                    InvestmentGoal.VACATION: "Vacation",
+                    InvestmentGoal.CAR: "Car Purchase",
+                    InvestmentGoal.EARLY_RETIREMENT: "Early Retirement",
+                    InvestmentGoal.DEBT_REPAYMENT: "Debt Repayment",
+                    InvestmentGoal.MEDICAL_EXPENSES: "Medical Expenses",
+                    InvestmentGoal.BUSINESS_STARTUP: "Business Startup",
+                    InvestmentGoal.LUXURY_PURCHASE: "Luxury Purchase"
+                }
+                return goal_names.get(investment_goal, "Investment Goal")
+        return v
+    
     @property
     def disposable_income(self) -> float:
         """Calculate disposable income for investment capacity"""
@@ -231,22 +260,84 @@ class UserProfile(BaseModel):
     
     @property
     def emergency_fund_needed(self) -> float:
-        """Calculate required emergency fund"""
-        monthly_expenses = self.monthly_expenses or (self.income / 12 * 0.7)
-        multiplier = {
-            EmploymentStatus.STUDENT: 3,
-            EmploymentStatus.WORKING_PROFESSIONAL: 6,
-            EmploymentStatus.SELF_EMPLOYED: 12,
-            EmploymentStatus.RETIRED: 9,
-            EmploymentStatus.UNEMPLOYED: 12,
-            EmploymentStatus.HOMEMAKER: 6
-        }.get(self.employment_status, 6)
-        return monthly_expenses * multiplier
-    
+        """Calculate required emergency fund based on current financial best practices"""
+        # Enhanced monthly expenses calculation
+        if self.monthly_expenses and self.monthly_expenses > 0:
+            monthly_expenses = self.monthly_expenses
+        else:
+            # More conservative fallback calculation
+            # Account for tax savings in new regime (many people have zero tax up to 12L)
+            effective_tax_rate = self._calculate_effective_tax_rate() if hasattr(self, '_calculate_effective_tax_rate') else 0.1
+            post_tax_income = self.income * (1 - effective_tax_rate) if self.income else 0
+            # Use 60% of post-tax income as more realistic monthly expenses
+            monthly_expenses = post_tax_income / 12 * 0.6
+        
+        # Updated multipliers based on current economic conditions and job market stability
+        multiplier_map = {
+            EmploymentStatus.STUDENT: 3,  # Minimal expenses, family support likely
+            EmploymentStatus.WORKING_PROFESSIONAL: 6,  # Standard recommendation
+            EmploymentStatus.SELF_EMPLOYED: 12,  # Higher volatility, irregular income
+            EmploymentStatus.RETIRED: 9,  # Healthcare uncertainties, fixed income
+            EmploymentStatus.UNEMPLOYED: 12,  # Job search can take longer in current market
+            EmploymentStatus.HOMEMAKER: 6   # Dependent on family income stability
+        }
+        
+        base_multiplier = multiplier_map.get(self.employment_status, 6)
+        
+        # Adjust multiplier based on additional risk factors
+        risk_adjusted_multiplier = base_multiplier
+        
+        # Age-based adjustments
+        if hasattr(self, 'age') and self.age:
+            if self.age > 50:
+                # Higher healthcare costs, potential job search difficulties
+                risk_adjusted_multiplier *= 1.2
+            elif self.age < 25:
+                # Lower expenses, more family support
+                risk_adjusted_multiplier *= 0.9
+        
+        # Income stability adjustments
+        if self.income:
+            # High earners need more months due to lifestyle inflation
+            if self.income > 2000000:  # Above 20L
+                risk_adjusted_multiplier *= 1.1
+            # Very high earners in luxury lifestyle
+            elif self.income > 5000000:  # Above 50L
+                risk_adjusted_multiplier *= 1.2
+        
+        # Dependents adjustment
+        if hasattr(self, 'dependents') and self.dependents:
+            # Each dependent adds risk
+            dependent_multiplier = 1 + (self.dependents * 0.15)
+            risk_adjusted_multiplier *= dependent_multiplier
+        
+        # Industry/job security adjustment (if available)
+        if hasattr(self, 'industry_risk') and self.industry_risk:
+            # High-risk industries (startups, volatile sectors)
+            if self.industry_risk == 'high':
+                risk_adjusted_multiplier *= 1.3
+            elif self.industry_risk == 'medium':
+                risk_adjusted_multiplier *= 1.1
+        
+        # Cap the multiplier at reasonable limits
+        risk_adjusted_multiplier = min(risk_adjusted_multiplier, 18)  # Max 18 months
+        risk_adjusted_multiplier = max(risk_adjusted_multiplier, 3)   # Min 3 months
+        
+        return monthly_expenses * risk_adjusted_multiplier
+
     @property
     def emergency_fund_gap(self) -> float:
-        """Gap in emergency fund"""
-        return max(0, self.emergency_fund_needed - (self.existing_emergency_fund or 0))
+        """Gap in emergency fund with enhanced validation"""
+        required_fund = self.emergency_fund_needed
+        existing_fund = self.existing_emergency_fund or 0
+        
+        # Ensure existing fund is not negative (data validation)
+        existing_fund = max(0, existing_fund)
+        
+        gap = required_fund - existing_fund
+        
+        # Return gap, ensuring it's not negative
+        return max(0, gap)
     
     @property
     def net_worth(self) -> float:
@@ -447,11 +538,23 @@ class Holding(BaseModel):
         if avg_buy_price and current_price:
             return ((current_price - avg_buy_price) / avg_buy_price) * 100
         return v
+    
+    # FIXED: Add get method for dictionary-like access
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get attribute value with default, similar to dict.get()"""
+        return getattr(self, key, default)
+    
+    # FIXED: Add to_dict method for easier serialization
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return self.dict()
 
 
 class PortfolioAnalysisRequest(BaseModel):
     profile: UserProfile
     holdings: List[Holding]
+    # FIXED: Add user_id field
+    user_id: Optional[int] = None
     
     include_tax_analysis: bool = Field(True, description="Include tax optimization analysis")
     include_rebalancing: bool = Field(True, description="Include rebalancing suggestions")
@@ -472,7 +575,7 @@ class PortfolioAnalysisResponse(BaseModel):
     # Additional fields that might be returned
     verdicts: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     alerts: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
-
+    user_id: Optional[int] = None 
 
 # Utility function to handle flexible profile data input
 def create_user_profile_from_form_data(form_data: Dict[str, Any]) -> UserProfile:

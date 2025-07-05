@@ -212,42 +212,122 @@ class AdvancedPortfolioModel:
             "max_affordable_amount": round(max_affordable, 0)
         }
 
-    
 
     @classmethod
     def get_tax_bracket(cls, income: float) -> str:
-        """Determine tax bracket for optimization"""
-        if income <= 250000:
-            return "nil"
-        elif income <= 500000:
+        """Determine highest marginal tax bracket for optimization based on FY 2025-26 Indian tax regime"""
+        # FY 2025-26 New Tax Regime (Progressive slabs)
+        if income <= 400000:  # Up to 4 lakh
+            return "0%"
+        elif income <= 800000:  # 4 lakh to 8 lakh
             return "5%"
-        elif income <= 1000000:
+        elif income <= 1200000:  # 8 lakh to 12 lakh
+            return "10%"
+        elif income <= 1600000:  # 12 lakh to 16 lakh
+            return "15%"
+        elif income <= 2000000:  # 16 lakh to 20 lakh
             return "20%"
-        else:
+        elif income <= 2400000:  # 20 lakh to 24 lakh
+            return "25%"
+        else:  # Above 24 lakh
             return "30%"
 
     @classmethod
+    def calculate_effective_tax_rate(cls, income: float) -> float:
+        """Calculate effective tax rate based on FY 2025-26 progressive tax slabs"""
+        if income <= 400000:
+            return 0.0
+        elif income <= 1200000:
+            # Due to rebate of Rs. 60,000, effective tax is zero up to 12 lakh
+            return 0.0
+        else:
+            # Calculate progressive tax
+            tax = 0
+            # 4-8 lakh: 5%
+            tax += min(income - 400000, 400000) * 0.05
+            # 8-12 lakh: 10%
+            if income > 800000:
+                tax += min(income - 800000, 400000) * 0.10
+            # 12-16 lakh: 15%
+            if income > 1200000:
+                tax += min(income - 1200000, 400000) * 0.15
+            # 16-20 lakh: 20%
+            if income > 1600000:
+                tax += min(income - 1600000, 400000) * 0.20
+            # 20-24 lakh: 25%
+            if income > 2000000:
+                tax += min(income - 2000000, 400000) * 0.25
+            # Above 24 lakh: 30%
+            if income > 2400000:
+                tax += (income - 2400000) * 0.30
+            
+            # Apply rebate of Rs. 60,000 if income <= 12 lakh
+            if income <= 1200000:
+                tax = max(0, tax - 60000)
+            
+            return tax / income if income > 0 else 0.0
+
+    @classmethod
     def apply_tax_optimization(cls, allocation: dict, profile: UserProfile) -> dict:
-        """Tax-efficient allocation based on income"""
+        """Tax-efficient allocation based on FY 2025-26 Indian income tax brackets"""
         if not profile.income:
             return allocation
         
-        tax_bracket = cls.get_tax_bracket(profile.income)
+        marginal_tax_bracket = cls.get_tax_bracket(profile.income)
+        effective_tax_rate = cls.calculate_effective_tax_rate(profile.income)
         
-        # High tax bracket: Favor tax-efficient instruments
-        if tax_bracket == "30%" and profile.goal_timeline_years > 3:
+        # High marginal tax bracket (30%): Favor tax-efficient instruments
+        if marginal_tax_bracket == "30%" and profile.goal_timeline_years > 3:
             # Increase equity (LTCG benefits) and ELSS exposure
             allocation["equity"] *= 1.08
-            # Add note for ELSS consideration
+            # Add note for ELSS consideration for Section 80C benefits
         
-        # Young, high-income earners: More aggressive
-        if profile.age < 35 and profile.income > 1500000:
+        # Upper-medium marginal tax bracket (25%): Strong tax optimization
+        elif marginal_tax_bracket == "25%" and profile.goal_timeline_years > 3:
+            allocation["equity"] *= 1.06
+            # Consider tax-saving instruments and equity for LTCG benefits
+        
+        # Medium-high marginal tax bracket (20%): Moderate tax optimization
+        elif marginal_tax_bracket == "20%" and profile.goal_timeline_years > 2:
+            allocation["equity"] *= 1.05
+            # Consider tax-saving instruments
+        
+        # Lower-medium marginal tax bracket (15%): Light tax optimization
+        elif marginal_tax_bracket == "15%" and profile.goal_timeline_years > 2:
+            allocation["equity"] *= 1.03
+            # Some focus on tax efficiency
+        
+        # High effective tax rate (above 12%): Focus on tax efficiency
+        if effective_tax_rate > 0.12:
+            allocation["equity"] *= 1.04
+            # Consider tax-efficient debt instruments
+        
+        # Young, high-income earners (above 16 lakh - where 20% bracket starts): More aggressive equity allocation
+        if profile.age < 35 and profile.income > 1600000:
             allocation["equity"] *= 1.1
             allocation["gold"] *= 0.9
         
-        # Normalize
+        # Ultra-high income earners (above 50 lakh): Consider surcharge implications
+        if profile.income > 5000000:
+            # At this level, surcharge applies - focus heavily on tax-efficient long-term instruments
+            # Surcharge rates: 10% (50L-1Cr), 15% (1Cr-2Cr), 25% (2Cr-5Cr), 25% (above 5Cr in new regime)
+            allocation["equity"] *= 1.12
+            allocation["gold"] *= 0.85
+        
+        # Very high income earners (above 24 lakh): Maximize LTCG benefits
+        if profile.income > 2400000 and profile.goal_timeline_years > 1:
+            allocation["equity"] *= 1.08
+            # At 30% bracket, LTCG at 12.5% (after 1 lakh exemption) is very beneficial
+        
+        # Income in no-tax zone (up to 12 lakh due to rebate): Focus on growth
+        if profile.income <= 1200000:
+            # No immediate tax benefit needed, focus on wealth creation
+            if profile.age < 40:
+                allocation["equity"] *= 1.02
+        
+        # Normalize to ensure total allocation equals 1
         total = sum(allocation.values())
-        return {k: v/total for k, v in allocation.items()}    
+        return {k: v/total for k, v in allocation.items()}
 
     @classmethod
     def generate_behavioral_notes(cls, profile: UserProfile, allocation: dict) -> list:

@@ -293,13 +293,30 @@ def analyze_portfolio(
     data: PortfolioAnalysisRequest,
     db: Session = Depends(get_db)
 ):
+    user_id = None
+    
+    try:
+        # Extract user_id from the profile data
+        profile_user_id = getattr(data.profile, 'user_id', None)
+        
+        user_id = save_user_data_from_raw(
+            data.dict(),
+            user_id=profile_user_id,
+            save_user=not profile_user_id
+        )
+        logger.info(f"User data stored under ID: {user_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to store user profile/goals to Supabase: {e}")
+        # Ensure user_id is set even if saving fails
+        user_id = getattr(data.profile, 'user_id', None)
+    
     try:
         logger.info("🔍 Analyzing user portfolio...")
 
         # Step 1: Quantitative Analysis
         result = EnhancedPortfolioAnalyzer.analyze_comprehensive(data.holdings, data.profile, db)
 
-        # Step 2: LLM Verdicts (Buy/Hold/Sell)
+        # Step 2: LLM Verdicts (Buy/Hold/Sell) - Fixed JSON parsing
         try:
             verdicts = HoldingVerdictEngine.get_verdicts(data.holdings)
             result["verdicts"] = verdicts
@@ -308,25 +325,37 @@ def analyze_portfolio(
             logger.warning(f"⚠️ Could not generate LLM verdicts: {ve}")
             result["verdicts"] = []
 
-        # Step 3: Alerts
+        # Step 3: Alerts - Fixed Holding object access
         try:
-            alerts = MonitoringEngine.generate_alerts_from_holdings(data.holdings)
+            # Convert holdings to dict format if needed
+            holdings_dict = []
+            for holding in data.holdings:
+                if hasattr(holding, 'dict'):
+                    holdings_dict.append(holding.dict())
+                elif hasattr(holding, 'model_dump'):
+                    holdings_dict.append(holding.model_dump())
+                else:
+                    holdings_dict.append(holding)
+            
+            alerts = MonitoringEngine.generate_alerts_from_holdings(holdings_dict)
             result["alerts"] = alerts
             logger.info("✅ Step 3: Monitoring alerts added.")
         except Exception as ae:
             logger.warning(f"⚠️ Could not generate monitoring alerts: {ae}")
             result["alerts"] = []
-
-        # ===== FIXED: Ensure we return the expected structure =====
-        return {
+            
+        # ===== FIXED: Properly structure response with user_id =====
+        response_data = {
+            "user_id": user_id,
             "profile": data.profile.dict() if hasattr(data.profile, 'dict') else data.profile.model_dump(),
             "portfolio_analysis": result
         }
+        
+        return response_data
 
     except Exception as e:
         logger.exception("❌ Portfolio analysis failed.")
         raise HTTPException(status_code=500, detail=f"Portfolio analysis failed: {str(e)}")
-
 
 
 
